@@ -35,8 +35,8 @@ Create a new DUT with some information to send:
 ```js
 TYPE DUT_Message :
 STRUCT
-	Id				: DINT;
-	Message			: STRING(255);
+  Id            : DINT;
+  Message       : STRING(255);
 END_STRUCT
 END_TYPE
 ```
@@ -44,15 +44,15 @@ END_TYPE
 Back in `MAIN`, let's create an instance of our new structure. We will also need a couple of function block declarations:
 ```js
 VAR
-	sendData			: DUT_Message;
-	bSend				: BOOL;
-	sTopic				: STRING;
+  sendData      : DUT_Message;
+  bSend         : BOOL;
+  sTopic        : STRING;
 
-	fbGetSysId			: FB_GetSystemId;
-	fbMqttClient		: FB_IotMqttClient := (
-							sHostName := 'iot.beckhoff.us',
-							nHostPort := 1883,
-							sTopicPrefix := 'nem_2024/');
+  fbGetSysId    : FB_GetSystemId;
+  fbMqttClient  : FB_IotMqttClient := (
+                      sHostName := 'iot.beckhoff.us',
+                      nHostPort := 1883,
+                      sTopicPrefix := 'nem_2024/');
 END_VAR
 ```
 
@@ -60,11 +60,11 @@ In the body of `MAIN`, we will create a conditional to explicitly publish a mess
 ```js
 // publish message
 IF bSend THEN
-	sendData.Id := sendData.Id + 1;
-	sendData.Message := 'Hello from NEM 2024!'; // put your message here!
-	sTopic := GUID_TO_STRING(fbGetSysId.stSystemId);
-	fbMqttClient.Publish(sTopic, ADR(sendData), SIZEOF(sendData));
-	bSend := FALSE;
+  sendData.Id := sendData.Id + 1;
+  sendData.Message := 'Hello from NEM 2024!'; // put your message here!
+  sTopic := GUID_TO_STRING(fbGetSysId.stSystemId);
+  fbMqttClient.Publish(sTopic, ADR(sendData), SIZEOF(sendData));
+  bSend := FALSE;
 END_IF
 
 // sync fb calls
@@ -88,13 +88,13 @@ Declaration:
 ```js
 FUNCTION TO_JSON : STRING(255)
 VAR_INPUT
-	Input				: ANY;
+  Input           : ANY;
 END_VAR
 VAR
-	sTypeName			: STRING;
-	sRes				: STRING(255);
-	fbJson				: FB_JsonSaxWriter;
-	fbJsonDataType 		: FB_JsonReadWriteDataType;
+  sTypeName       : STRING;
+  sRes            : STRING(255);
+  fbJson          : FB_JsonSaxWriter;
+  fbJsonDataType  : FB_JsonReadWriteDataType;
 END_VAR
 ```
 Body:
@@ -122,8 +122,8 @@ fbMqttClient.Publish(sTopic, ADR(sSend), LEN2(ADR(sSend)));
 Check back with the desktop client, and you should be able to see JSON messages coming in:
 ```json
 {
-    "Id": 1,
-    "Message": "Hello from NEM 2024!"
+  "Id": 1,
+  "Message": "Hello from NEM 2024!"
 }
 ```
 
@@ -135,27 +135,27 @@ We have been using the desktop client to subscribe to a topic and listen for mes
 
 Add a few declarations to `MAIN`:
 ```js
-bSubscribe			: BOOL;
-sReceived			: STRING(255);
-sRecTopic			: STRING;
-fbMessageQueue 		: FB_IotMqttMessageQueue;
-fbMessage 			: FB_IotMqttMessage;
+bSubscribe      : BOOL;
+sReceived       : STRING(255);
+sRecTopic       : STRING;
+fbMessageQueue  : FB_IotMqttMessageQueue;
+fbMessage       : FB_IotMqttMessage;
 ```
 
 and the following to the body:
 ```js
 // subscribe
 IF bSubscribe THEN
-	fbMqttClient.ipMessageQueue := fbMessageQueue;
-	fbMqttClient.Subscribe(sTopic:='#'); // listen for all nem_2024 messages
-	bSubscribe := FALSE;
+  fbMqttClient.ipMessageQueue := fbMessageQueue;
+  fbMqttClient.Subscribe(sTopic:='#'); // listen for all nem_2024 messages
+  bSubscribe := FALSE;
 END_IF
 
 // listen for messages
 IF fbMessageQueue.nQueuedMessages > 0 AND fbMessageQueue.Dequeue(fbMessage) THEN
-	MEMSET(ADR(sReceived), 0, SIZEOF(sReceived)); // clear receive buffer
-	fbMessage.GetPayload(pPayload:=ADR(sReceived), nPayloadSize:=SIZEOF(sReceived), FALSE);
-	fbMessage.GetTopic(ADR(sRecTopic), SIZEOF(sRecTopic));
+  MEMSET(ADR(sReceived), 0, SIZEOF(sReceived)); // clear receive buffer
+  fbMessage.GetPayload(pPayload:=ADR(sReceived), nPayloadSize:=SIZEOF(sReceived), FALSE);
+  fbMessage.GetTopic(ADR(sRecTopic), SIZEOF(sRecTopic));
 END_IF
 ```
 
@@ -167,13 +167,13 @@ Declaration:
 ```js
 FUNCTION FROM_JSON : BOOL
 VAR_INPUT
-	sJson		: STRING;
-	Output		: ANY;
+  sJson     : STRING;
+  Output    : ANY;
 END_VAR
 VAR
-	sTypeName		: STRING;
-	sRes			: STRING(255);
-	fbJsonDataType 	: FB_JsonReadWriteDataType;
+  sTypeName       : STRING;
+  sRes            : STRING(255);
+  fbJsonDataType  : FB_JsonReadWriteDataType;
 END_VAR
 ```
 
@@ -194,7 +194,7 @@ receiveData		: DUT_Message;
 IF fbMessageQueue.nQueuedMessages > 0 AND fbMessageQueue.Dequeue(fbMessage) THEN
 	// ...
 
-	FROM_JSON(sReceived, receiveData);
+  FROM_JSON(sReceived, receiveData);
 END_IF
 ```
 
