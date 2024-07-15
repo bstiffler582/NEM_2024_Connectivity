@@ -200,7 +200,7 @@ Finally, we read and process the response data. If the request is successful, we
 
 ### 5. TwinCAT Recipe Request
 
-Now to retrieve the recipe, first create a type to hold the response data.
+If we can successfully retrieve the Access Token and it is being loaded into `sAccessToken`, we can retrieve the recipe data. First, create a type to hold the response message:
 
 ```js
 TYPE DUT_ApiRecipe :
@@ -227,6 +227,7 @@ Then we will need to add some additional declarations in `MAIN`:
 The proceeding steps to get the recipe data are similar to the Auth request, but with some notable differences:
 - We are issuing a `GET` request instead of a `POST` request
 - We need to attach our Access Token to the header of the request
+  - In the form of a key:value pair; `Authorization`:`Bearer <token>`
 - We need to supply a URL parameter for the `recipeId`
 - The resulting data should be deserialized from JSON into the `DUT_ApiRecipe` type
 
@@ -262,8 +263,12 @@ Troubleshooting:
 
 - `401`: Make sure the access token is being loaded correctly 
   - `sAccessToken` = `'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9__NEM2024'`
-- `404`: `nRecipeId` is between 1 and 7
-- `400`: `client_id` and `client_secret` are appropriately serialized to JSON included in the auth request
+- `401`: Make sure header (`FB_IotHttpHeaderFieldMap`) is being attached to request
+- `404`: `nRecipeId` value is `1 thru 7`
+- `400`: `client_id` and `client_secret` are appropriately serialized to JSON and included in the body of the auth `POST` request
+- No response: Check endpoint addresses
+  - `sHostName` should not have `https://` prefix
+  - `sUri` of `SendRequest` method should start with `/`
 
 <a id="summary"></a>
 
