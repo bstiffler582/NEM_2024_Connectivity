@@ -1,11 +1,11 @@
-## Connectivity Lab 1 - MQTT
+## Connectivity Lab 2 - HTTP/REST
 
 ### Contents
 1. [Introduction](#introduction)
 2. [Dependencies](#dependencies)
-3. [Publishing](#publishing)
-4. [JSON](#json)
-5. [Subscribing](#subscribing)
+3. [Auth Flow](#auth_flow)
+4. [TwinCAT Auth Request](#twincat_auth)
+5. [TwinCAT Recipe Request](#twincat_recipe)
 6. [Summary](#summary)
 
 ---
@@ -14,201 +14,259 @@
 
 ### 1. Introduction
 
-MQTT tooling in TwinCAT is particularly simple and comprehensive. In this lab, we will demonstrate basic usage of the MQTT client libraries to publish and subscribe to a web-hosted broker. You will also gain exposure to JSON handling and the use of the `ANY` type for writing generic, reusable functions.
+The ability to make HTTP requests right from the TwinCAT runtime opens up a lot of software interfacing opportunities. RESTful APIs are a very common way for organizations to provide secure access to priviledged information. Introducing any kind of middleware complicates the transaction and potentially exposes the data over insecure channels. In this lab, we will interact with a demo API using a common authentication flow to retrieve sensitive information directly into the PLC. In this case, the sensitive information is going to be **super secret recipe** parameters.
 
 <a id="dependencies"></a>
 
 ### 2. Dependencies
 
-This lab uses TwinCAT 3.1 and the TF6701 IoT Communication library. If you are using 4024, the required libraries are already installed and available. If using 4026, you will need to add the TF6701 package via the Package Manager. We will also be using the [*MQTTk*](https://github.com/matesh/mqttk/releases) client tool for testing. If you already have a favorite MQTT client interface, feel free to use that as well.
+This lab uses TwinCAT 3.1 and the TF6760 IoT HTTPS/REST library. If you are using 4024, the required libraries are already installed and available. If using 4026, you will need to add the TF6760 package via the Package Manager.
 
-<a id="publishing"></a>
+<a id="auth_flow"></a>
 
-### 3. Publishing
+### 3. Auth Flow
+
+The following graphic illustrates the authentication flow we will implement from the PLC program:
+
+<img src="img_authflow.png">
+
+> credit: vmware.com
+
+In our case, the PLC program is the consuming application. We will use two separate test endpoints to act as the authorization server and the resource (recipe) server. 
+```
+Authorization:  https://putsreq.com/6h0nzE2faGfK23K9UzFV
+Resource:       https://putsreq.com/RlFsRfglQsarf07mbaSz
+```
+
+Let's use our cURL command (`Invoke-WebRequest`) in PowerShell to test this out. For starters, we can just try to grab something from the Resource endpoint. As part of our request, we will have to specify a `recipeId` to retrieve from the resource server. We can do this with a simple parameter right in the URL: 
+
+<span style="color:purple">putsreq.com/RlFsRfglQsarf07mbaSz</span>?<span style="color:green">recipeId=1</span>
+
+ So our PowerShell command will be:
+
+```ps
+curl https://putsreq.com/RlFsRfglQsarf07mbaSz?recipeId=1
+```
+
+Unsurprisingly, the response is <span style="color:red">(401) Unauthorized</span>, because we have not attached an Access Token to authorize our request. We must follow the flow and supply the authorization server with our Client Id and Client Secret to get an Access Token in return.
+
+```ps
+$auth = @{
+  client_id = "nem_2024"
+  client_secret = "super_secret_client_secret"
+}
+curl https://putsreq.com/6h0nzE2faGfK23K9UzFV `
+  -Method POST `
+  -ContentType "application/json" `
+  -Body ($auth | ConvertTo-JSON -Compress)
+```
+We pass the client credentials (`client_id` and `client_secret`) into the body of a `POST` request to our authorization endpoint. If the credentials are valid, our client is authenticated and the endpoint returns an Access Token:
+
+```ps
+Content           : eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9__NEM2024
+```
+
+> For simplicity, we are just returning the Access Token value. In reality, it is typically accompanied by a few other fields in JSON format, like token 'type' and expiration date.
+
+From here, our Access Token is attached via a Header field to each subsequent request to the Resource server. This will authorize our client:
+
+```ps
+curl https://putsreq.com/RlFsRfglQsarf07mbaSz?recipeId=1 `
+  -Headers @{ Authorization = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9__NEM2024' }
+```
+
+And now instead of <span style="color:red">401</span>, we should receive a <span style="color:green">200</span> response containing recipe data:
+
+```ps
+Content : {
+            "id": 1,
+            "ag1_speed": 80,
+            "mix_time": 300,
+            "temp_sp": 45
+          }
+```
+
+We have now demonstrated our application Auth flow using PowerShell's cURL equivalent, `Invoke-WebRequest` (the `curl` command we've been using is just a shortcut/alias). The last piece is to do this in TwinCAT.
+
+> Note on 'Auth': You may think the terms "authentication" and "autorization" have been used interachangeably here, but be careful - they are different things in this context. Authentication is confirming the identity of a given entity, while Authorization is the act of verifying and controlling the entity's access to certain resources.
+>
+> Supplying our client credentials (id and secret) to the Authorization Server is an act of *Authentication*. When we attach our Access Token to the Resource Server, it will *Authorize* our access to the information therein. It is best summarized as "who are you?" (authentication) versus "what permissions do you have?" (authorization).
+>
+> You will see the shorthand 'Auth' used frequently, because many times we are dealing with both terms.
+
+<a id="twincat_auth"></a>
+
+### 4. TwinCAT Auth Request
 
 Create a fresh TwinCAT / PLC Project and add the following PLC library references:
 - Tc2_Utilities
 - Tc3_IotBase
 - Tc3_JsonXml
 
-Create a new DUT with some information to send:
+Port over the `TO_JSON` and `FROM_JSON` functions we created in the MQTT lab.
+
+Luckily, from our preliminary testing we were able to learn the format of our send and receive messages. Let's create a type to correspond with our auth message data:
+
 ```js
-TYPE DUT_Message :
+TYPE DUT_ApiAuth :
 STRUCT
-	Id				: DINT;
-	Message			: STRING(255);
+  client_id         : STRING(255);
+  client_secret     : STRING(255);
 END_STRUCT
 END_TYPE
 ```
 
-Back in `MAIN`, let's create an instance of our new structure. We will also need a couple of function block declarations:
+We can also go ahead an create a new instance of our ApiAuth type with the `client_id` and `client_secret` fields populated.
+
 ```js
+PROGRAM MAIN
 VAR
-	sendData			: DUT_Message;
-	bSend				: BOOL;
-	sTopic				: STRING;
-
-	fbGetSysId			: FB_GetSystemId;
-	fbMqttClient		: FB_IotMqttClient := (
-							sHostName := 'iot.beckhoff.us',
-							nHostPort := 1883,
-							sTopicPrefix := 'nem_2024/');
+  apiAuth           : DUT_ApiAuth := (
+                        client_id:='nem_2024', 
+                        client_secret:='super_secret_client_secret'
+                      );
 END_VAR
 ```
 
-In the body of `MAIN`, we will create a conditional to explicitly publish a message to our MQTT broker:
-```js
-// publish message
-IF bSend THEN
-	sendData.Id := sendData.Id + 1;
-	sendData.Message := 'Hello from NEM 2024!'; // put your message here!
-	sTopic := GUID_TO_STRING(fbGetSysId.stSystemId);
-	fbMqttClient.Publish(sTopic, ADR(sendData), SIZEOF(sendData));
-	bSend := FALSE;
-END_IF
+> We are all using the same client_id and client_secret values for this demo. In reality (and for obvious security reasons), each consuming client will have unique values for these. It is somewhat analogous to a username/password, but for individual *clients* instead of individual *users*.
 
-// sync fb calls
-fbGetSysId(bExecute:=TRUE);
-fbMqttClient.Execute(TRUE);
+Now add the following additional variables:
+
+```js
+httpClient          : FB_IotHttpClient := (
+                        sHostName:='putsreq.com',
+                        nHostPort:=443,
+                        bKeepAlive:=FALSE
+                      );
+
+authRequest         : FB_IotHttpRequest;
+
+nState              : DINT;   // program state
+nLastResponse       : DINT;   // last http response code
+sSendBuffer         : STRING(255);
+sRecBuffer          : STRING(255);
+sAccessToken        : STRING(255);
 ```
 
-Activate and run the PLC project. Before we toggle our send bit, open up the MQTT desktop client and create a connection to the broker. If we subscribe to the `nem_2024/#` path, we will receive all messages from all sub-topics. Toggle the send bit, and we should start to see messages coming in with new topics created for each sender's system GUID.
+Now we will build a state machine to handle building the request, sending it, and processing the results.
 
-<a id="json"></a>
-
-### 4. JSON
-
-We are currently sending the message as a fixed-size binary data format. We may still be able to read the string data, but it is not cleanly formatted or digestible to subscribers who don't have the `DUT_Message` type information. Luckily for us, TwinCAT includes straight-forward tooling for *serializing* data types to human (and machine) readable JSON (JavaScript Object Notation).
-
-Why JSON? JSON is a great data exchange format utilized all over the web. An object serialized to JSON provides *just enough* metadata so that it is both human readable, and easily *deserialized* back into a usable object in almost any programming language (TwinCAT included).
-
-Add a new function `TO_JSON` to the project. Return type will be `STRING(255)`, and we will make our function generic by accepting the `ANY` type as input.
-
-Declaration:
 ```js
-FUNCTION TO_JSON : STRING(255)
-VAR_INPUT
-	Input				: ANY;
-END_VAR
-VAR
-	sTypeName			: STRING;
-	sRes				: STRING(255);
-	fbJson				: FB_JsonSaxWriter;
-	fbJsonDataType 		: FB_JsonReadWriteDataType;
-END_VAR
+CASE nState OF
+  // idle
+  0:
+  // auth request
+  10:
+  11:
+  // recipe request
+  20:
+  21:
+END_CASE
+
+httpClient.Execute();
 ```
-Body:
+In the idle state, we are just setting a client property and clearing out the received buffer. If we do not have a specific certificate to exchange with the endpoint, we will need to set this `bNoServerCertCheck` property to `TRUE`.
 ```js
-sTypeName := fbJsonDataType.GetDatatypeNameByAddress(TO_UDINT(Input.diSize), Input.pValue);
-fbJsonDataType.AddJsonValueFromSymbol(fbJson, sTypeName, TO_UDINT(Input.diSize), Input.pValue);
-fbJson.CopyDocument(sRes, SIZEOF(sRes));
-TO_JSON := sRes;
+0:
+  httpClient.stTLS.bNoServerCertCheck := TRUE;
+  MEMSET(ADR(sRecBuffer), 0, SIZEOF(sRecBuffer));
 ```
-Quite nice that we can go from any PLC data structure to a JSON string in just a few lines of code! 
-
->There are a **lot** more options in the Tc3_JsonXml library, too! You can fully customize your JSON/XML output. For example, the naming of JSON keys do not have to match the structure member names exactly. There is even a JsonSax*Pretty*Writer block that formats the JSON output for readability (we'll save the bytes for now). Have a look at the infosys documentation if you are looking for more flexibility.
-
-We can revise our send logic to use this new function and generate a JSON string to send instead of binary data:
+In the first state of our Auth flow, we prep and send the request. Primarily we are serializing the client credential stucture to JSON, and calling our request FBs `SendRequest` method.
 ```js
-// ...
-sJson := TO_JSON(sendData);
-fbMqttClient.Publish(sTopic, ADR(sSend), LEN2(ADR(sSend)));
-// ...
+10:
+  MEMSET(ADR(sAccessToken), 0, SIZEOF(sAccessToken));
+  sSendBuffer := TO_JSON(apiAuth);
+  authRequest.sContentType := 'application/json';
+  IF authRequest.SendRequest('/6h0nzE2faGfK23K9UzFV', httpClient, ETcIotHttpRequestType.HTTP_POST, ADR(sSendBuffer), LEN2(ADR(sSendBuffer))) THEN
+    nState := 11;
+  END_IF
 ```
-
-
-> Note that you will have to declare a new string variable `sJson`, and we are using `LEN2()` to send the **exact** length of the string instead of the allocated size; `STRING(255)` = 256 bytes.
-
-Check back with the desktop client, and you should be able to see JSON messages coming in:
-```json
-{
-    "Id": 1,
-    "Message": "Hello from NEM 2024!"
-}
+Finally, we read and process the response data. If the request is successful, we take the response and build our `sAccessToken` string.
+```js
+11:
+  IF NOT authRequest.bBusy THEN
+    nLastResponse := authRequest.nStatusCode;
+    IF authRequest.nStatusCode = 200 THEN
+      authRequest.GetContent(ADR(sRecBuffer), SIZEOF(sRecBuffer), FALSE);
+      sAccessToken := CONCAT('Bearer ', sRecBuffer);
+      nState := 0;
+    ELSE
+      // failed
+      nState := 0;
+    END_IF
+  END_IF
 ```
 
-<a id="subscribing"></a>
+<a id="twincat_recipe"></a>
 
-### 5. Subscribing
+### 5. TwinCAT Recipe Request
 
-We have been using the desktop client to subscribe to a topic and listen for messages, but TwinCAT is just as capable for this functionality.
+Now to retrieve the recipe, first create a type to hold the response data.
 
-Add a few declarations to `MAIN`:
 ```js
-bSubscribe			: BOOL;
-sReceived			: STRING(255);
-sRecTopic			: STRING;
-fbMessageQueue 		: FB_IotMqttMessageQueue;
-fbMessage 			: FB_IotMqttMessage;
+TYPE DUT_ApiRecipe :
+STRUCT
+  id                : DINT;
+  ag1_speed         : DINT;
+  mix_time          : DINT;
+  temp_sp           : REAL;
+END_STRUCT
+END_TYPE
 ```
 
-and the following to the body:
-```js
-// subscribe
-IF bSubscribe THEN
-	fbMqttClient.ipMessageQueue := fbMessageQueue;
-	fbMqttClient.Subscribe(sTopic:='#'); // listen for all nem_2024 messages
-	bSubscribe := FALSE;
-END_IF
+> Note: We create the type with member names to match what we expect our endpoint to return. As mentioned in the previous lab, these don't necessarily have to be the same. It just makes the JSON handling easier.
 
-// listen for messages
-IF fbMessageQueue.nQueuedMessages > 0 AND fbMessageQueue.Dequeue(fbMessage) THEN
-	MEMSET(ADR(sReceived), 0, SIZEOF(sReceived)); // clear receive buffer
-	fbMessage.GetPayload(pPayload:=ADR(sReceived), nPayloadSize:=SIZEOF(sReceived), FALSE);
-	fbMessage.GetTopic(ADR(sRecTopic), SIZEOF(sRecTopic));
-END_IF
+Then we will need to add some additional declarations in `MAIN`:
+```js
+  recipeRequest     : FB_IotHttpRequest;
+  header            : FB_IotHttpHeaderFieldMap;
+  sRecipeUrl        : STRING;
+  nRecipeId         : DINT;
+  apiRecipe         : DUT_ApiRecipe;
 ```
 
->Note that we are also calling the `fbMessage.GetTopic()` method. We are subscribed to a wildcard path (nem_2024/**#**), but we can still get the exact topic to which the message was published.
+The proceeding steps to get the recipe data are similar to the Auth request, but with some notable differences:
+- We are issuing a `GET` request instead of a `POST` request
+- We need to attach our Access Token to the header of the request
+- We need to supply a URL parameter for the `recipeId`
+- The resulting data should be deserialized from JSON into the `DUT_ApiRecipe` type
 
-The last piece would be to convert the incoming message from a JSON string *back* to our `DUT_Message` type. We can write a similar little generic helper function to make this easy.
-
-Declaration:
 ```js
-FUNCTION FROM_JSON : BOOL
-VAR_INPUT
-	sJson		: STRING;
-	Output		: ANY;
-END_VAR
-VAR
-	sTypeName		: STRING;
-	sRes			: STRING(255);
-	fbJsonDataType 	: FB_JsonReadWriteDataType;
-END_VAR
-```
-
-Body:
-```js
-sTypeName := fbJsonDataType.GetDatatypeNameByAddress(TO_UDINT(Output.diSize), Output.pValue);
-fbJsonDataType.SetSymbolFromJson(sJson, sTypeName, TO_UDINT(Output.diSize), Output.pValue);
-FROM_JSON := TRUE;
-```
-
-And finally, declare a new structure instance to hold the receieved data, and revise the listening logic:
-```js
-receiveData		: DUT_Message;
+20:
+  sRecipeUrl := CONCAT('/RlFsRfglQsarf07mbaSz?recipeId=', TO_STRING(nRecipeId));
+  header.AddField('Authorization', sAccessToken, FALSE); 
+  IF recipeRequest.SendRequest(sRecipeUrl, httpClient, ETcIotHttpRequestType.HTTP_GET, 0, 0, header) THEN
+    nState := 21;
+  END_IF
 ```
 ```js
-//...
-// listen for messages
-IF fbMessageQueue.nQueuedMessages > 0 AND fbMessageQueue.Dequeue(fbMessage) THEN
-	// ...
-
-	FROM_JSON(sReceived, receiveData);
-END_IF
+21:
+  IF NOT recipeRequest.bBusy THEN
+    nLastResponse := recipeRequest.nStatusCode;
+    IF recipeRequest.nStatusCode = 200 THEN
+      recipeRequest.GetContent(ADR(sRecBuffer), SIZEOF(sRecBuffer), FALSE);
+      FROM_JSON(sRecBuffer, apiRecipe);
+      nState := 0;
+    ELSE
+      // failed
+      nState := 0;
+    END_IF
+  END_IF
 ```
 
-And we should see our received JSON string deserialized into the receiveData instance of `DUT_Message`.
+Now to follow the whole workflow:
+- Set `nState` to `10` to retrieve the access token
+- Set `nRecipeId` to any value `1 thru 7`
+- Set `nState` to `20` to retrieve the recipe with the selected Id
+
+Troubleshooting:
+
+- `401`: Make sure the access token is being loaded correctly 
+  - `sAccessToken` = `'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9__NEM2024'`
+- `404`: `nRecipeId` is between 1 and 7
+- `400`: `client_id` and `client_secret` are appropriately serialized to JSON included in the auth request
 
 <a id="summary"></a>
 
 ### 6. Summary
 
-In this lab we have explored the technical details of MQTT, but more importantly, the broad advantages of a publisher/subscriber messaging model. We were all able to interact with the broker and exchange information as publishers and subscribers, without any security or addressing considerations. MQTT provides useful application layer so that fewer protocol, communication and security details are required to get things talking.
-
-### Bonus (Time permitting)
-
-The IoT libraries are fine as is, but maybe we can further simplify or improve the experience with a nice wrapper Interface/FB.
-
-- What properties and methods might we have in our interface?
-- What strategies should we employ for receiving messages? Remember we are subscribed to a topic and messages come into a queue asynchronously.
+In this lab we have practiced bi-directional HTTP communication via GET and POST requests, while also learning the advantages of being able to handle these functions right from the PLC. The demo application followed a popular authorization scheme in order to illustrate common API practices, while consuming data from these systems in a RESTful and secure manner.

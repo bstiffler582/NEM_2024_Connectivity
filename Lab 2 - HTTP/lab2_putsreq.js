@@ -1,4 +1,4 @@
-// endpoint
+// resource endpoint
 // https://putsreq.com/RlFsRfglQsarf07mbaSz
 
 response.status = 401;
@@ -15,7 +15,7 @@ const recipes = [
 ];
 
 const auth = request.headers["AUTHORIZATION"];
-if (auth && auth === "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9") {
+if (auth && auth === "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9__NEM2024") {
     const id = parseInt(request.params.recipeId);
     if (id && id >= 1 && id <= 7) {
         response.status = 200;
@@ -29,7 +29,7 @@ if (auth && auth === "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9") {
 
 // --------------------------------
 
-// auth
+// auth endpoint
 // https://putsreq.com/6h0nzE2faGfK23K9UzFV
 
 const req = JSON.parse(request.body);
@@ -38,7 +38,7 @@ if (!req.client_id || !req.client_secret) {
     response.body = "Bad Request";
 } else {
     if (req.client_id === "nem_2024" && req.client_secret === "super_secret_client_secret") {
-        response.body = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
+        response.body = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9__NEM2024";
     } else {
         response.status = 401;
         response.body = "Unauthorized";

@@ -117,14 +117,11 @@ fbMqttClient.Publish(sTopic, ADR(sSend), LEN2(ADR(sSend)));
 ```
 
 
-> Note that you will have to declare a new string variable `sJson`, and we are using `LEN2()` to send the **exact** length of the string instead of the allocated size; `STRING(255)` = 256 bytes.
+> Note that you will have to declare a new `STRING(255)` variable `sJson`, and we are using `LEN2()` to send the **exact** length of the string instead of the allocated size; `STRING(255)` = 256 bytes.
 
 Check back with the desktop client, and you should be able to see JSON messages coming in:
 ```json
-{
-  "Id": 1,
-  "Message": "Hello from NEM 2024!"
-}
+{ "Id": 1, "Message": "Hello from NEM 2024!" }
 ```
 
 <a id="subscribing"></a>
@@ -192,8 +189,7 @@ receiveData		: DUT_Message;
 //...
 // listen for messages
 IF fbMessageQueue.nQueuedMessages > 0 AND fbMessageQueue.Dequeue(fbMessage) THEN
-	// ...
-
+  // ...
   FROM_JSON(sReceived, receiveData);
 END_IF
 ```
