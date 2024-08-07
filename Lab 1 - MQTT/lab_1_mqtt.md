@@ -112,7 +112,7 @@ We can revise our send logic to use this new function and generate a JSON string
 ```js
 // ...
 sJson := TO_JSON(sendData);
-fbMqttClient.Publish(sTopic, ADR(sSend), LEN2(ADR(sSend)));
+fbMqttClient.Publish(sTopic, ADR(sJson), LEN2(ADR(sJson)));
 // ...
 ```
 
