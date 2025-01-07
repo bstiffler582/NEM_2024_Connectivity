@@ -34,8 +34,8 @@ The following graphic illustrates the authentication flow we will implement from
 
 In our case, the PLC program is the consuming application. We will use two separate test endpoints to act as the authorization server and the resource (recipe) server. 
 ```
-Authorization:  https://putsreq.com/6h0nzE2faGfK23K9UzFV
-Resource:       https://putsreq.com/RlFsRfglQsarf07mbaSz
+Authorization:  https://putsreq.com/u3Ok6wcEaFbX6bnIpKUJ
+Resource:       https://putsreq.com/j2eSCssMLjjKNwdqIOIV
 ```
 
 Let's use our cURL command (`Invoke-WebRequest`) in PowerShell to test this out. For starters, we can just try to grab something from the Resource endpoint. As part of our request, we will have to specify a `recipeId` to retrieve from the resource server. We can do this with a simple parameter right in the URL: 
@@ -45,7 +45,7 @@ Let's use our cURL command (`Invoke-WebRequest`) in PowerShell to test this out.
  So our PowerShell command will be:
 
 ```ps
-curl https://putsreq.com/RlFsRfglQsarf07mbaSz?recipeId=1
+curl https://putsreq.com/j2eSCssMLjjKNwdqIOIV?recipeId=1
 ```
 
 Unsurprisingly, the response is <span style="color:red">(401) Unauthorized</span>, because we have not attached an Access Token to authorize our request. We must follow the flow and supply the authorization server with our Client Id and Client Secret to get an Access Token in return.
@@ -55,7 +55,7 @@ $auth = @{
   client_id = "nem_2024"
   client_secret = "super_secret_client_secret"
 }
-curl https://putsreq.com/6h0nzE2faGfK23K9UzFV `
+curl https://putsreq.com/u3Ok6wcEaFbX6bnIpKUJ `
   -Method POST `
   -ContentType "application/json" `
   -Body ($auth | ConvertTo-JSON -Compress)
@@ -71,7 +71,7 @@ Content           : eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9__NEM2024
 From here, our Access Token is attached via a Header field to each subsequent request to the Resource server. This will authorize our client:
 
 ```ps
-curl https://putsreq.com/RlFsRfglQsarf07mbaSz?recipeId=1 `
+curl https://putsreq.com/j2eSCssMLjjKNwdqIOIV?recipeId=1 `
   -Headers @{ Authorization = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9__NEM2024' }
 ```
 
@@ -176,7 +176,7 @@ In the first state of our Auth flow, we prep and send the request. Primarily we 
   MEMSET(ADR(sAccessToken), 0, SIZEOF(sAccessToken));
   sSendBuffer := TO_JSON(apiAuth);
   authRequest.sContentType := 'application/json';
-  IF authRequest.SendRequest('/6h0nzE2faGfK23K9UzFV', httpClient, ETcIotHttpRequestType.HTTP_POST, ADR(sSendBuffer), LEN2(ADR(sSendBuffer))) THEN
+  IF authRequest.SendRequest('/u3Ok6wcEaFbX6bnIpKUJ', httpClient, ETcIotHttpRequestType.HTTP_POST, ADR(sSendBuffer), LEN2(ADR(sSendBuffer))) THEN
     nState := 11;
   END_IF
 ```
@@ -233,7 +233,7 @@ The proceeding steps to get the recipe data are similar to the Auth request, but
 
 ```js
 20:
-  sRecipeUrl := CONCAT('/RlFsRfglQsarf07mbaSz?recipeId=', TO_STRING(nRecipeId));
+  sRecipeUrl := CONCAT('/j2eSCssMLjjKNwdqIOIV?recipeId=', TO_STRING(nRecipeId));
   header.AddField('Authorization', sAccessToken, FALSE); 
   IF recipeRequest.SendRequest(sRecipeUrl, httpClient, ETcIotHttpRequestType.HTTP_GET, 0, 0, header) THEN
     nState := 21;
