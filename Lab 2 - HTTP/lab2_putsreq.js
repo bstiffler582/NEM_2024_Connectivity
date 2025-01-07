@@ -1,5 +1,5 @@
 // resource endpoint
-// https://putsreq.com/RlFsRfglQsarf07mbaSz
+// https://putsreq.com/j2eSCssMLjjKNwdqIOIV
 
 response.status = 401;
 response.body = "Unauthorized";
