@@ -30,7 +30,7 @@ if (auth && auth === "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9__NEM2024") {
 // --------------------------------
 
 // auth endpoint
-// https://putsreq.com/6h0nzE2faGfK23K9UzFV
+// https://putsreq.com/u3Ok6wcEaFbX6bnIpKUJ
 
 const req = JSON.parse(request.body);
 if (!req.client_id || !req.client_secret) {
