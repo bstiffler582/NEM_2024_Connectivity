@@ -40,7 +40,7 @@ Resource:       https://putsreq.com/j2eSCssMLjjKNwdqIOIV
 
 Let's use our cURL command (`Invoke-WebRequest`) in PowerShell to test this out. For starters, we can just try to grab something from the Resource endpoint. As part of our request, we will have to specify a `recipeId` to retrieve from the resource server. We can do this with a simple parameter right in the URL: 
 
-<span style="color:purple">putsreq.com/RlFsRfglQsarf07mbaSz</span>?<span style="color:green">recipeId=1</span>
+<span style="color:purple">putsreq.com/j2eSCssMLjjKNwdqIOIV</span>?<span style="color:green">recipeId=1</span>
 
  So our PowerShell command will be:
 
