@@ -164,7 +164,7 @@ Declaration:
 ```js
 FUNCTION FROM_JSON : BOOL
 VAR_INPUT
-  sJson     : STRING;
+  sJson     : STRING(255);
   Output    : ANY;
 END_VAR
 VAR
